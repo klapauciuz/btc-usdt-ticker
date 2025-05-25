@@ -96,8 +96,8 @@
 			  window.location.href = url.toString();
 			}
 
-		    const timestamps = {{ data | map(attribute='timestamp') | list | tojson }};
-		    const prices = {{ data | map(attribute='price') | list | tojson }};
+		    const timestamps = {{ data | map(attribute='timestamp') | list | tojson }}.reverse();;
+		    const prices = {{ data | map(attribute='price') | list | tojson }}.reverse();
 
 		    const height = 20;
 		    const width = prices.length;
