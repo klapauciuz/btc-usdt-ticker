@@ -156,6 +156,7 @@
 		      if (values.length > 0) {
 		        const avg = values.reduce((a, b) => a + b, 0) / values.length;
 		        document.getElementById("average").textContent = `$${avg.toFixed(2)}`;
+		        document.getElementsByTagName("title")[0].textContent = `$${avg.toFixed(2)}` + '- Btcusd.space';
 		      }
 		    }
 
