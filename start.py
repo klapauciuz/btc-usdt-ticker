@@ -6,7 +6,7 @@ import io
 import time
 from datetime import datetime, timedelta
 import urllib
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Query
 from fastapi.responses import PlainTextResponse, HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -24,7 +24,6 @@ import httpx
 app = FastAPI()
 @app.middleware("http")
 async def fix_backslashes(request: Request, call_next):
-	# Fix backslashes in the URL path
 	decoded_path = urllib.parse.unquote(request.url.path)
 	if '\\' in decoded_path:
 		corrected_path = decoded_path.replace('\\', '')
@@ -39,9 +38,45 @@ env = Environment(loader=FileSystemLoader("templates"))
 templates = Jinja2Templates(directory="templates")
 
 db_f = "btc_prices.db"
+
+def datetimeformat(value, format="%Y-%m-%d"):
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value)
+    return value.strftime(format)
+
+templates.env.filters["datetimeformat"] = datetimeformat
+
+
 @app.get("/")
-async def dashboard(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+async def index(request: Request, range: str = Query("30d")):
+    today = datetime.today().date()
+    delta_map = {
+        "1d": 1,
+        "3d": 3,
+        "7d": 7,
+        "14d": 14,
+        "1m": 30,
+        "3m": 90,
+        "6m": 180,
+        "1y": 365
+    }
+    days = delta_map.get(range, 30)
+    start_date = today - timedelta(days=days)
+
+    conn = sqlite3.connect("btc_prices.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT timestamp, price 
+        FROM prices 
+        WHERE date(timestamp) BETWEEN ? AND ? 
+        ORDER BY timestamp ASC
+    """, (start_date, today))
+    rows = cursor.fetchall()
+    conn.close()
+
+    data = [{"timestamp": row[0], "price": row[1]} for row in rows]
+    return templates.TemplateResponse("index.html", {"request": request, "data": data, "range": range})
+
 
 @app.get("/upload", response_class=HTMLResponse)
 def upload_form(request: Request):
@@ -94,7 +129,6 @@ def generate_full_report(start_date: str, end_date: str):
 	if start_dt > end_dt:
 		raise HTTPException(status_code=400, detail="Start date must be before end date.")
 
-	# Connect DB
 	conn = sqlite3.connect("btc_prices.db")
 	cursor = conn.cursor()
 	cursor.execute("""
@@ -108,7 +142,6 @@ def generate_full_report(start_date: str, end_date: str):
 	if not rows:
 		return HTMLResponse("<h3>⚠️ No data found in selected range.</h3>")
 
-	# Group data
 	daily_data = defaultdict(list)
 	monthly_data = defaultdict(list)
 	for ts, price in rows:
@@ -121,21 +154,23 @@ def generate_full_report(start_date: str, end_date: str):
 	os.makedirs("daily_reports", exist_ok=True)
 	os.makedirs("monthly_reports", exist_ok=True)
 
-	# Daily reports (no chart)
+	# daily reports (no chart)
 	for day, records in daily_data.items():
 		out_path = f"daily_reports/report_{day}.html"
 		write_report("report_template.html", out_path, records, f"Daily Report for {day}", with_chart=False)
 
-	# Monthly reports (with chart)
+	# monthly reports (with chart)
 	for month, records in monthly_data.items():
 		per_day = defaultdict(float)
+		month_obj = datetime.strptime(month, "%Y-%m")
+		title_str = f"Bitcoin {month_obj.strftime('%B %Y')} Price"
 		for r in records:
 			d = r["timestamp"]
 			per_day[d] += r["price"]
 
 		summary = [{"timestamp": k, "price": v} for k, v in sorted(per_day.items())]
 		out_path = f"monthly_reports/report_{month}.html"
-		write_report("report_template.html", out_path, summary, f"Monthly Summary for {month}", with_chart=True)
+		write_report("report_template.html", out_path, summary, title_str, with_chart=True)
 
 
 	return HTMLResponse("<h3>✅ Daily and monthly reports generated</h3>")
@@ -181,48 +216,4 @@ def binance_data(start_date: str, end_date: str):
 		media_type="text/csv",
 		headers={"Content-Disposition": f"attachment; filename={filename}"}
 	)
-
-
-@app.get("/api/bitstamp-price")
-async def get_btc_price():
-    url = "https://www.bitstamp.net/api/v2/ticker/btcusdt/"
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url)
-    data = response.json()
-    return JSONResponse({"price": data["last"]})
-
-@app.get("/api/binance-price")
-async def get_binance_price():
-    url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url)
-    data = response.json()
-    return JSONResponse({"price": data["price"]})
-
-@app.get("/api/coinbase-price")
-async def get_coinbase_price():
-    url = "https://api.coinbase.com/v2/prices/BTC-USDT/spot"
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url)
-    data = response.json()
-    return {"price": data["data"]["amount"]}
-
-@app.get("/api/bitfinex-price")
-async def get_bitfinex_price():
-    url = "https://api-pub.bitfinex.com/v2/ticker/tBTCUSD"
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url)
-    data = response.json()
-    last_price = data[6]  # Index 6 is LAST_PRICE
-    return {"price": last_price}
-
-@app.get("/api/kraken-price")
-async def get_kraken_price():
-    url = "https://api.kraken.com/0/public/Ticker?pair=XBTUSDT"
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url)
-    data = response.json()
-    last_price = data["result"]["XBTUSDT"]["c"][0]
-    return {"price": float(last_price)}
-
 

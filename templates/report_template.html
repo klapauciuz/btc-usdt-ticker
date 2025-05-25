@@ -3,7 +3,7 @@
 <html>
 <head>
     <title>{{ title }}</title>
-     <style>
+    <style>
       body {  font-family: Arial, 
         sans-serif; 
         margin-top: 50px; 
@@ -33,11 +33,10 @@
         line-height: 1.1;
         white-space: pre;
       }
-  </style>
-    </head>
+    </style>
+</head>
 <body>
     <h2>{{ title }}</h2>
-
     {% if with_chart %}
         <div id="prices">
           <h1><span id="average">...</span></h1>
@@ -89,7 +88,7 @@
     <table>
         <thead>
             <tr>
-                <th style="text-align: left;">Timestamp</th>
+                <th style="text-align: left;">Date</th>
                 <th style="text-align: left;">Price</th>
             </tr>
         </thead>
