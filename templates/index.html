@@ -60,7 +60,7 @@
     </style>
 </head>
 <body>
-	<h2>{{ title }}</h2>
+	<h2>{{ title }}{% if range == '1d' %} Today{% elif range == '3d' %} Last 3 Days{% elif range == '7d' %} Last 7 Days{% elif range == '14d' %} Last 14 Days{% elif range == '1m' %} Last Month{% elif range == '3m' %} Last 3 Months	{% elif range == '6m' %} Last 6 Months{% elif range == '1y' %} Last Year{% endif %}</h2>
 		<div id="prices">
 		  <h1><span id="average">…</span></h1>
 		  <p>BITSTAMP: <span id="bitstamp">…</span></p>
@@ -86,15 +86,15 @@
 		{% endif %}
 
 	  	<div id="range-buttons" style="margin-bottom: 1em;">
-		  <button onclick="changeRange('1d')">1d</button>
-		  <button onclick="changeRange('3d')">3d</button>
-		  <button onclick="changeRange('7d')">7d</button>
-		  <button onclick="changeRange('14d')">14d</button>
-		  <button onclick="changeRange('1m')">1m</button>
-		  <button onclick="changeRange('3m')">3m</button>
-		  <button onclick="changeRange('6m')">6m</button>
-		  <button onclick="changeRange('1y')">1y</button>
-		</div>
+			  <button onclick="changeRange('1d')">1d</button>
+			  <button onclick="changeRange('3d')">3d</button>
+			  <button onclick="changeRange('7d')">7d</button>
+			  <button onclick="changeRange('14d')">14d</button>
+			  <button onclick="changeRange('1m')">1m</button>
+			  <button onclick="changeRange('3m')">3m</button>
+			  <button onclick="changeRange('6m')">6m</button>
+			  <button onclick="changeRange('1y')">1y</button>
+			</div>
 
 		<script>
 			  function changeRange(range) {
@@ -105,6 +105,7 @@
 
 			  const timestamps = {{ data | map(attribute='timestamp') | list | tojson }}.reverse();
 			  const prices = {{ data | map(attribute='price') | list | tojson }}.reverse();
+				const range = "{{ range }}";
 
 			  const height = 20;
 			  const width = prices.length;
@@ -137,18 +138,25 @@
 			  let labelPos = 0;
 
 			  for (let i = 0; i < timestamps.length; i++) {
-			    const date = new Date(timestamps[i]);
-			    const day = date.getDate().toString().padStart(2, '0');
-			    const month = date.toLocaleString('en-US', { month: 'short' });
+			  	if (range === '1d') {
+					    	const date = new Date(timestamps[i]);
+							  const hour = date.getHours().toString().padStart(2, '0');
+							  const minute = date.getMinutes().toString().padStart(2, '0');
+							  xAxis += hour + ':' + minute + ' ';
+							} else {
+				    	const date = new Date(timestamps[i]);
+					    const day = date.getDate().toString().padStart(2, '0');
+					    const month = date.toLocaleString('en-US', { month: 'short' });
 
-			    xAxis += day + ' ';
+					    xAxis += day + ' ';
 
-			    if (day === '01' && month !== lastMonth) {
-			      const space = (i * 3) - labelPos;
-			      monthLine += ' '.repeat(space) + month;
-			      labelPos += space + month.length;
-			      lastMonth = month;
-			    }
+					    if (day === '01' && month !== lastMonth) {
+					      const space = (i * 3) - labelPos;
+					      monthLine += ' '.repeat(space) + month;
+					      labelPos += space + month.length;
+					      lastMonth = month;
+					    }
+		    		}
 			  }
 
 			  // Output to DOM
@@ -166,7 +174,11 @@
 		    <tbody>
 		        {% for row in data | reverse %}
 		        <tr>
-		            <td style="width: 100px;">{{ row.timestamp | datetimeformat("%-d %B") }}</td>
+		        		{% if range == '1d' %}
+		            	<td class="timestamp" style="width: 100px;">{{ row.timestamp | datetimeformat("%H-%M") }}</td>
+		            {% else %}
+			            <td class="timestamp" style="width: 100px;">{{ row.timestamp | datetimeformat("%-d %B") }}</td>
+		            {% endif %}
 		            <td>{{ row.price }}</td>
 		        </tr>
 		        {% endfor %}

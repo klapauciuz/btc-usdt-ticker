@@ -66,23 +66,30 @@ async def index(request: Request, range: str = Query("30d")):
     conn = sqlite3.connect("btc_prices.db")
     cursor = conn.cursor()
 
-    # Get daily average prices
-    cursor.execute("""
-        SELECT date(timestamp) AS day, ROUND(AVG(price), 2) AS avg_price
-        FROM prices
-        WHERE date(timestamp) BETWEEN ? AND ?
-        GROUP BY day
-        ORDER BY day ASC
-    """, (start_date, today))
+    if range == "1d":
+        # Don't aggregate — return raw prices from today
+        cursor.execute("""
+            SELECT timestamp, price 
+            FROM prices 
+            WHERE date(timestamp) = ? 
+            ORDER BY timestamp ASC
+        """, (today,))
+    else:
+        # Aggregate by day
+        cursor.execute("""
+            SELECT DATE(timestamp) as day, AVG(price)
+            FROM prices
+            WHERE DATE(timestamp) BETWEEN ? AND ?
+            GROUP BY day
+            ORDER BY day ASC
+        """, (start_date, today))
+
     rows = cursor.fetchall()
     conn.close()
 
-    data = [{"timestamp": row[0], "price": row[1]} for row in rows]
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "data": data,
-        "range": range
-    })
+    data = [{"timestamp": row[0], "price": round(row[1], 2)} for row in rows]
+    return templates.TemplateResponse("index.html", {"request": request, "data": data, "range": range})
+
 
 
 @app.get("/upload", response_class=HTMLResponse)
