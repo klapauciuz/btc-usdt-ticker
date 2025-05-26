@@ -65,17 +65,24 @@ async def index(request: Request, range: str = Query("30d")):
 
     conn = sqlite3.connect("btc_prices.db")
     cursor = conn.cursor()
+
+    # Get daily average prices
     cursor.execute("""
-        SELECT timestamp, price 
-        FROM prices 
-        WHERE date(timestamp) BETWEEN ? AND ? 
-        ORDER BY timestamp ASC
+        SELECT date(timestamp) AS day, ROUND(AVG(price), 2) AS avg_price
+        FROM prices
+        WHERE date(timestamp) BETWEEN ? AND ?
+        GROUP BY day
+        ORDER BY day ASC
     """, (start_date, today))
     rows = cursor.fetchall()
     conn.close()
 
     data = [{"timestamp": row[0], "price": row[1]} for row in rows]
-    return templates.TemplateResponse("index.html", {"request": request, "data": data, "range": range})
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "data": data,
+        "range": range
+    })
 
 
 @app.get("/upload", response_class=HTMLResponse)
@@ -217,3 +224,20 @@ def binance_data(start_date: str, end_date: str):
 		headers={"Content-Disposition": f"attachment; filename={filename}"}
 	)
 
+
+@app.post("/save_price")
+async def save_price(request: Request):
+    data = await request.json()
+    timestamp = data.get("timestamp")
+    price = data.get("price")
+
+    if timestamp is None or price is None:
+        return {"error": "Missing timestamp or price"}
+
+    conn = sqlite3.connect("btc_prices.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO prices (timestamp, price) VALUES (?, ?)", (timestamp, price))
+    conn.commit()
+    conn.close()
+
+    return {"status": "ok"}

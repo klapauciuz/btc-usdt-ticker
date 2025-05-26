@@ -97,7 +97,7 @@
 		</div>
 
 		<script>
-			function changeRange(range) {
+			  function changeRange(range) {
 			    const url = new URL(window.location.href);
 			    url.searchParams.set("range", range);
 			    window.location.href = url.toString();
@@ -112,8 +112,8 @@
 			  const min = Math.min(...prices);
 			  const scale = price => Math.round((price - min) / (max - min) * (height - 1));
 
-			  // Grid for graph body
 			  let grid = Array.from({ length: height }, () => Array(width).fill('   '));
+
 			  prices.forEach((price, i) => {
 			    const top = height - 1 - scale(price);
 			    for (let row = height - 1; row >= top; row--) {
@@ -121,41 +121,39 @@
 			    }
 			  });
 
-			  const yAxisLines = grid.map((_, i) => {
+			  const yAxisLabels = [];
+			  const chartLines = [];
+
+			  for (let i = 0; i < height; i++) {
 			    const value = (max - ((max - min) / (height - 1)) * i).toFixed(2);
-			    return value.toString().padStart(10, ' ') + ' |';
-			  });
+			    yAxisLabels.push(value.toString().padStart(10, ' ') + ' |');
+			    chartLines.push(grid[i].join(''));
+			  }
 
-			  const chartLines = grid.map(row => row.join(''));
-
-			  let xAxisDays = '';
-			  let monthMarkers = Array(width).fill('   ');
+			  // X-axis day line
+			  let xAxis = '';
+			  let monthLine = '';
 			  let lastMonth = '';
-			  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
-			                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+			  let labelPos = 0;
 
 			  for (let i = 0; i < timestamps.length; i++) {
 			    const date = new Date(timestamps[i]);
 			    const day = date.getDate().toString().padStart(2, '0');
-			    const month = date.getMonth();
-			    const isFirstOfMonth = day === "01";
+			    const month = date.toLocaleString('en-US', { month: 'short' });
 
-			    xAxisDays += day + ' ';
+			    xAxis += day + ' ';
 
-			    if (i === 0 || isFirstOfMonth && month !== lastMonth) {
-			      const label = monthNames[month];
-			      for (let j = 0; j < label.length && i + j < width; j++) {
-			        monthMarkers[i + j] = ' ' + label[j] + ' ';
-			      }
+			    if (day === '01' && month !== lastMonth) {
+			      const space = (i * 3) - labelPos;
+			      monthLine += ' '.repeat(space) + month;
+			      labelPos += space + month.length;
 			      lastMonth = month;
 			    }
 			  }
 
-			  document.getElementById('y-axis').textContent = yAxisLines.join('\n');
-			  document.getElementById('chart').textContent =
-			    chartLines.join('\n') + '\n' +
-			    xAxisDays + '\n' +
-			    monthMarkers.join('');
+			  // Output to DOM
+			  document.getElementById('y-axis').textContent = yAxisLabels.join('\n');
+			  document.getElementById('chart').textContent = chartLines.join('\n') + '\n' + xAxis + '\n' + monthLine.padStart(labelPos + 13, ' ');
 		</script>
 	    <br><br>
 		<table>
@@ -176,15 +174,32 @@
 		</table>
 		<script>
 		    const prices_api = {};
-
+		    avg = '...'
 		    function updateAverage() {
 		      const values = Object.values(prices_api).filter(v => v !== null && !isNaN(v));
 		      if (values.length > 0) {
-		        const avg = values.reduce((a, b) => a + b, 0) / values.length;
+		        avg = values.reduce((a, b) => a + b, 0) / values.length;
 		        document.getElementById("average").textContent = `$${avg.toFixed(2)}`;
 		        document.getElementsByTagName("title")[0].textContent = `$${avg.toFixed(2)}` + '- Btcusd.space';
 		      }
 		    }
+
+		    function sendAveragePrice() {
+				  
+				  fetch('/save_price', {
+				    method: 'POST',
+				    headers: {
+				      'Content-Type': 'application/json'
+				    },
+				    body: JSON.stringify({
+				      timestamp: new Date().toISOString(),
+				      price: avg.toFixed(2)
+				    })
+				  });
+				}
+
+				setInterval(sendAveragePrice, 60000); // Every 60 seconds
+
 
 		    const wsBitstamp = new WebSocket('wss://ws.bitstamp.net');
 		    wsBitstamp.onopen = () => {
