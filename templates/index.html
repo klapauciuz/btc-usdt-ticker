@@ -70,14 +70,13 @@
 		  <p>KRAKEN  : <span id="kraken">…</span></p>
 		</div>
 		<div style="display: flex; align-items: flex-start;">
-		  <!-- Static Y-axis (prices) -->
-		  <pre id="y-axis" style="flex: none; text-align: right;"></pre>
+s		  <pre id="y-axis" style="flex: none; text-align: right;"></pre>
 
-		  <!-- Scrollable Graph -->
 		  <div style="overflow-x: auto; width: 60%; max-width: 60vw; min-width: 300px; white-space: nowrap;">
 		    <pre id="chart" style="display: inline-block;"></pre>
 		  </div>
 		</div>
+
 
 
 		{% if range == '3m' or range == '6m' or range == '1y' %}
@@ -99,68 +98,64 @@
 
 		<script>
 			function changeRange(range) {
-				const url = new URL(window.location.href);
-				url.searchParams.set("range", range);
-				window.location.href = url.toString();
-			}
-
-		    const timestamps = {{ data | map(attribute='timestamp') | list | tojson }}.reverse();
-			const prices = {{ data | map(attribute='price') | list | tojson }}.reverse();
-
-			const height = 20;
-			const width = prices.length;
-			const max = Math.max(...prices);
-			const min = Math.min(...prices);
-			const scale = price => Math.round((price - min) / (max - min) * (height - 1));
-
-			// Build graph grid
-			let grid = Array.from({ length: height }, () => Array(width).fill('   '));
-			prices.forEach((price, i) => {
-			  const top = height - 1 - scale(price);
-			  for (let row = height - 1; row >= top; row--) {
-			    grid[row][i] = ' * ';
+			    const url = new URL(window.location.href);
+			    url.searchParams.set("range", range);
+			    window.location.href = url.toString();
 			  }
-			});
 
-			// Y-axis lines
-			const yAxisLines = grid.map((_, i) => {
-			  const value = (max - ((max - min) / (height - 1)) * i).toFixed(2);
-			  return value.toString().padStart(10, ' ') + ' |';
-			});
+			  const timestamps = {{ data | map(attribute='timestamp') | list | tojson }}.reverse();
+			  const prices = {{ data | map(attribute='price') | list | tojson }}.reverse();
 
-			// Chart lines only (no labels)
-			const chartLines = grid.map(row => row.join(''));
+			  const height = 20;
+			  const width = prices.length;
+			  const max = Math.max(...prices);
+			  const min = Math.min(...prices);
+			  const scale = price => Math.round((price - min) / (max - min) * (height - 1));
 
-			// X-axis days
-			let xAxisDays = '';
-			let xAxisMonths = '';
-			let lastMonth = '';
-			const monthLabels = {
-			  "01": "January", "02": "February", "03": "March", "04": "April",
-			  "05": "May", "06": "June", "07": "July", "08": "August",
-			  "09": "September", "10": "October", "11": "November", "12": "December"
-			};
+			  // Grid for graph body
+			  let grid = Array.from({ length: height }, () => Array(width).fill('   '));
+			  prices.forEach((price, i) => {
+			    const top = height - 1 - scale(price);
+			    for (let row = height - 1; row >= top; row--) {
+			      grid[row][i] = ' * ';
+			    }
+			  });
 
-			for (let i = 0; i < timestamps.length; i++) {
-			  const day = timestamps[i].slice(-2); // e.g., "01"
-			  const month = timestamps[i].slice(5, 7); // e.g., "04"
-			  const isMonthStart = day === "01";
+			  const yAxisLines = grid.map((_, i) => {
+			    const value = (max - ((max - min) / (height - 1)) * i).toFixed(2);
+			    return value.toString().padStart(10, ' ') + ' |';
+			  });
 
-			  xAxisDays += day.padStart(2, ' ') + ' ';
-			  if (i === 0 || (isMonthStart && month !== lastMonth)) {
-			    const label = monthLabels[month];
-			    xAxisMonths += label.padStart((3 * i + label.length), ' ');
-			    lastMonth = month;
+			  const chartLines = grid.map(row => row.join(''));
+
+			  let xAxisDays = '';
+			  let monthMarkers = Array(width).fill('   ');
+			  let lastMonth = '';
+			  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+			                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+			  for (let i = 0; i < timestamps.length; i++) {
+			    const date = new Date(timestamps[i]);
+			    const day = date.getDate().toString().padStart(2, '0');
+			    const month = date.getMonth();
+			    const isFirstOfMonth = day === "01";
+
+			    xAxisDays += day + ' ';
+
+			    if (i === 0 || isFirstOfMonth && month !== lastMonth) {
+			      const label = monthNames[month];
+			      for (let j = 0; j < label.length && i + j < width; j++) {
+			        monthMarkers[i + j] = ' ' + label[j] + ' ';
+			      }
+			      lastMonth = month;
+			    }
 			  }
-			}
 
-			// Output
-			document.getElementById('y-axis').textContent = yAxisLines.join('\n');
-			document.getElementById('chart').textContent =
-		    chartLines.join('\n') + '\n' + xAxisDays + '\n' + xAxisMonths;
-
-
-
+			  document.getElementById('y-axis').textContent = yAxisLines.join('\n');
+			  document.getElementById('chart').textContent =
+			    chartLines.join('\n') + '\n' +
+			    xAxisDays + '\n' +
+			    monthMarkers.join('');
 		</script>
 	    <br><br>
 		<table>
