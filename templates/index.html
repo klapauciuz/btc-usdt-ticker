@@ -98,70 +98,79 @@
 
 		<script>
 			  function changeRange(range) {
-			    const url = new URL(window.location.href);
-			    url.searchParams.set("range", range);
-			    window.location.href = url.toString();
-			  }
+    const url = new URL(window.location.href);
+    url.searchParams.set("range", range);
+    window.location.href = url.toString();
+  }
 
-			  const timestamps = {{ data | map(attribute='timestamp') | list | tojson }}.reverse();
-			  const prices = {{ data | map(attribute='price') | list | tojson }}.reverse();
-				const range = "{{ range }}";
+  const timestamps = {{ data | map(attribute='timestamp') | list | tojson }}.reverse();
+  const prices = {{ data | map(attribute='price') | list | tojson }}.reverse();
+  const range = "{{ range }}";
 
-			  const height = 20;
-			  const width = prices.length;
-			  const max = Math.max(...prices);
-			  const min = Math.min(...prices);
-			  const scale = price => Math.round((price - min) / (max - min) * (height - 1));
+  const height = 20;
+  const width = prices.length;
+  const max = Math.max(...prices);
+  const min = Math.min(...prices);
+  const scale = price => Math.round((price - min) / (max - min) * (height - 1));
 
-			  let grid = Array.from({ length: height }, () => Array(width).fill('   '));
+  let grid = Array.from({ length: height }, () => Array(width).fill('   '));
 
-			  prices.forEach((price, i) => {
-			    const top = height - 1 - scale(price);
-			    for (let row = height - 1; row >= top; row--) {
-			      grid[row][i] = ' * ';
-			    }
-			  });
+  prices.forEach((price, i) => {
+    const top = height - 1 - scale(price);
+    for (let row = height - 1; row >= top; row--) {
+      grid[row][i] = ' * ';
+    }
+  });
 
-			  const yAxisLabels = [];
-			  const chartLines = [];
+  const yAxisLabels = [];
+  const chartLines = [];
 
-			  for (let i = 0; i < height; i++) {
-			    const value = (max - ((max - min) / (height - 1)) * i).toFixed(2);
-			    yAxisLabels.push(value.toString().padStart(10, ' ') + ' |');
-			    chartLines.push(grid[i].join(''));
-			  }
+  for (let i = 0; i < height; i++) {
+    const value = (max - ((max - min) / (height - 1)) * i).toFixed(2);
+    yAxisLabels.push(value.toString().padStart(10, ' ') + ' |');
+    chartLines.push(grid[i].join(''));
+  }
 
-			  // X-axis day line
-			  let xAxis = '';
-			  let monthLine = '';
-			  let lastMonth = '';
-			  let labelPos = 0;
+  let xAxis = '';
+  let monthLineArr = Array(width * 3).fill(' '); // Each label is 3 characters wide
+  let lastMonth = '';
+  let seenFirst = false;
 
-			  for (let i = 0; i < timestamps.length; i++) {
-			  	if (range === '1d') {
-					    	const date = new Date(timestamps[i]);
-							  const hour = date.getHours().toString().padStart(2, '0');
-							  const minute = date.getMinutes().toString().padStart(2, '0');
-							  xAxis += hour + ':' + minute + ' ';
-							} else {
-				    	const date = new Date(timestamps[i]);
-					    const day = date.getDate().toString().padStart(2, '0');
-					    const month = date.toLocaleString('en-US', { month: 'short' });
+  for (let i = 0; i < timestamps.length; i++) {
+    const date = new Date(timestamps[i]);
 
-					    xAxis += day + ' ';
+    if (range === '1d') {
+      const hour = date.getHours().toString().padStart(2, '0');
+      const minute = date.getMinutes().toString().padStart(2, '0');
+      xAxis += hour + ':' + minute + ' ';
+    } else {
+      const day = date.getDate().toString().padStart(2, '0');
+      xAxis += day + ' ';
 
-					    if (day === '01' && month !== lastMonth) {
-					      const space = (i * 3) - labelPos;
-					      monthLine += ' '.repeat(space) + month;
-					      labelPos += space + month.length;
-					      lastMonth = month;
-					    }
-		    		}
-			  }
+      if (day === '01') {
+        const labelPos = i * 3;
+        const prevDate = new Date(date);
+        prevDate.setMonth(prevDate.getMonth() - 1);
+        const prevMonth = prevDate.toLocaleString('en-US', { month: 'short' });
 
-			  // Output to DOM
-			  document.getElementById('y-axis').textContent = yAxisLabels.join('\n');
-			  document.getElementById('chart').textContent = chartLines.join('\n') + '\n' + xAxis + '\n' + monthLine.padStart(labelPos + 13, ' ');
+        // Write month name under the "01"
+        for (let j = 0; j < prevMonth.length; j++) {
+          if (labelPos + j < monthLineArr.length) {
+            monthLineArr[labelPos + j] = prevMonth[j];
+          }
+        }
+      }
+    }
+  }
+
+  const monthLine = monthLineArr.join('');
+
+  document.getElementById('y-axis').textContent = yAxisLabels.join('\n');
+  document.getElementById('chart').textContent =
+    chartLines.join('\n') + '\n' + xAxis + '\n' + (range === '1d' ? '' : ' ' + monthLine);
+
+
+
 		</script>
 	    <br><br>
 		<table>
@@ -175,9 +184,9 @@
 		        {% for row in data | reverse %}
 		        <tr>
 		        		{% if range == '1d' %}
-		            	<td class="timestamp" style="width: 100px;">{{ row.timestamp | datetimeformat("%H-%M") }}</td>
+		            	<td style="width: 100px;">{{ row.timestamp | datetimeformat("%H-%M") }}</td>
 		            {% else %}
-			            <td class="timestamp" style="width: 100px;">{{ row.timestamp | datetimeformat("%-d %B") }}</td>
+			            <td style="width: 100px;">{{ row.timestamp | datetimeformat("%-d %B") }}</td>
 		            {% endif %}
 		            <td>{{ row.price }}</td>
 		        </tr>
