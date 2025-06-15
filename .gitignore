@@ -1,0 +1,10 @@
+# Ignore __pycache__ folders
+__pycache__/
+
+# Ignore everything inside daily_reports and monthly_reports folders
+daily_reports/*
+monthly_reports/*
+
+# Ignore specific log files
+access.log
+log.log

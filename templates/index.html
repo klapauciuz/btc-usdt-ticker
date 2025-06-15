@@ -1,0 +1,313 @@
+{% set title = "BTC/USDT Price" %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ title }}</title>
+    <style>
+      body {  
+      	font-family: Arial, 
+        sans-serif; 
+        margin-top: 50px; 
+        background: black;
+        color: lime;
+        font-family: monospace;
+        padding: 20px;
+      }
+      #price { 
+        font-size: 48px; 
+        font-weight: bold; 
+        color: #1abc9c; 
+      }
+      #prices {
+        color: white;
+        right: 150px;
+        position: absolute;
+      }
+      #prices p:not(:first-child) {
+        color: grey;
+      }
+      h1 {
+        font-size: 3em;
+        font-weight: bold;
+      }
+      pre {
+        line-height: 1.1;
+        white-space: pre;
+      }
+      #range-buttons {
+				margin: 1em 0;
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.5em;
+	 		}
+
+		  #range-buttons button {
+				background-color: #000;
+				color: lime;
+				border: 2px solid lime;
+				padding: 0.4em 0.8em;
+				font-size: 1em;
+				font-weight: bold;
+				cursor: pointer;
+				transition: background-color 0.2s ease;
+		  }
+
+		  #range-buttons button:hover {
+				background-color: #111;
+				color: #dfff6f;
+				border-color: #dfff6f;
+		  }
+    </style>
+</head>
+<body>
+	<h2>{{ title }}{% if range == '1d' %} Today{% elif range == '3d' %} Last 3 Days{% elif range == '7d' %} Last 7 Days{% elif range == '14d' %} Last 14 Days{% elif range == '1m' %} Last Month{% elif range == '3m' %} Last 3 Months	{% elif range == '6m' %} Last 6 Months{% elif range == '1y' %} Last Year{% endif %}</h2>
+		<div id="prices">
+		  <h1><span id="average">…</span></h1>
+		  <p>BITSTAMP: <span id="bitstamp">…</span></p>
+		  <p>BINANCE : <span id="binance">…</span></p>
+		  <p>COINBASE: <span id="coinbase">…</span></p>
+		  <p>BITFINEX: <span id="bitfinex">…</span></p>
+		  <p>KRAKEN  : <span id="kraken">…</span></p>
+		</div>
+		<div style="display: flex; align-items: flex-start;">
+		  <pre id="y-axis" style="flex: none; text-align: right;"></pre>
+
+		  <div style="overflow-x: auto; width: 60%; max-width: 60vw; min-width: 300px; white-space: nowrap;">
+		    <pre id="chart" style="display: inline-block;"></pre>
+		  </div>
+		</div>
+
+
+
+		{% if range == '3m' or range == '6m' or range == '1y' %}
+	  	<div style="text-align: center; font-size: 0.6rem; color: #adff2f; opacity: 0.7; margin-bottom: 4px;">
+		  	← scroll →
+			</div>
+		{% endif %}
+
+	  	<div id="range-buttons" style="margin-bottom: 1em;">
+			  <button onclick="changeRange('1d')">1d</button>
+			  <button onclick="changeRange('3d')">3d</button>
+			  <button onclick="changeRange('7d')">7d</button>
+			  <button onclick="changeRange('14d')">14d</button>
+			  <button onclick="changeRange('1m')">1m</button>
+			  <button onclick="changeRange('3m')">3m</button>
+			  <button onclick="changeRange('6m')">6m</button>
+			  <button onclick="changeRange('1y')">1y</button>
+			</div>
+
+		<script>
+			  function changeRange(range) {
+			    const url = new URL(window.location.href);
+			    url.searchParams.set("range", range);
+			    window.location.href = url.toString();
+			  }
+
+			  const timestamps = {{ data | map(attribute='timestamp') | list | tojson }}.reverse();
+			  const prices = {{ data | map(attribute='price') | list | tojson }}.reverse();
+			  const range = "{{ range }}";
+
+			  const height = 20;
+			  const width = prices.length;
+			  const max = Math.max(...prices);
+			  const min = Math.min(...prices);
+			  const scale = price => Math.round((price - min) / (max - min) * (height - 1));
+
+			  let grid = Array.from({ length: height }, () => Array(width).fill('   '));
+
+			  prices.forEach((price, i) => {
+			    const top = height - 1 - scale(price);
+			    for (let row = height - 1; row >= top; row--) {
+			      grid[row][i] = ' * ';
+			    }
+			  });
+
+			  const yAxisLabels = [];
+			  const chartLines = [];
+
+			  for (let i = 0; i < height; i++) {
+			    const value = (max - ((max - min) / (height - 1)) * i).toFixed(2);
+			    yAxisLabels.push(value.toString().padStart(10, ' ') + ' |');
+			    chartLines.push(grid[i].join(''));
+			  }
+
+			  let xAxis = '';
+			  let monthLineArr = Array(width * 3).fill(' '); // Each label is 3 characters wide
+			  let lastMonth = '';
+			  let seenFirst = false;
+
+			  for (let i = 0; i < timestamps.length; i++) {
+				  if (!timestamps[i].endsWith('Z')) {
+				    timestamps[i] += 'Z';
+				  }
+			    const date = new Date(timestamps[i]);
+
+			    if (range === '1d') {
+			      const hour = date.getHours().toString().padStart(2, '0');
+			      const minute = date.getMinutes().toString().padStart(2, '0');
+			      xAxis += hour + ':' + minute + ' ';
+			    } else {
+			      const day = date.getDate().toString().padStart(2, '0');
+			      xAxis += day + ' ';
+
+			      if (day === '01') {
+			        const labelPos = i * 3;
+			        const prevDate = new Date(date);
+			        prevDate.setMonth(prevDate.getMonth() - 1);
+			        const prevMonth = prevDate.toLocaleString('en-US', { month: 'short' });
+
+			        // Write month name under the "01"
+			        for (let j = 0; j < prevMonth.length; j++) {
+			          if (labelPos + j < monthLineArr.length) {
+			            monthLineArr[labelPos + j] = prevMonth[j];
+			          }
+			        }
+			      }
+			    }
+			  }
+
+			  const monthLine = monthLineArr.join('');
+
+			  document.getElementById('y-axis').textContent = yAxisLabels.join('\n');
+			  document.getElementById('chart').textContent =
+			    chartLines.join('\n') + '\n' + xAxis + '\n' + (range === '1d' ? '' : ' ' + monthLine);
+		</script>
+    <br><br>
+		<table>
+		    <thead>
+		        <tr>
+		            <th style="text-align: left;">Date</th>
+		            <th style="text-align: left;">Price</th>
+		        </tr>
+		    </thead>
+		    <tbody>
+		        {% for row in data | reverse %}
+		        <tr>
+		        		{% if range == '1d' %}
+		            	<td class="local-time" data-utc="{{ row.timestamp }}" style="width: 100px;">{{ row.timestamp }}</td>
+		            {% else %}
+			            <td style="width: 100px;">{{ row.timestamp | datetimeformat("%-d %B") }}</td>
+		            {% endif %}
+		            <td>{{ row.price }}</td>
+		        </tr>
+		        {% endfor %}
+		    </tbody>
+		</table>
+		<script>
+				document.querySelectorAll('.local-time').forEach(td => {
+				  let utcString = td.dataset.utc;
+
+				  // If no timezone specified, manually treat it as UTC
+				  if (!utcString.endsWith('Z')) {
+				    // Append 'Z' to treat as UTC (safe if it's in ISO format)
+				    utcString += 'Z';
+				  }
+
+				  const date = new Date(utcString); // Now always interpreted as UTC
+
+				  const hours = date.getHours().toString().padStart(2, '0');
+				  const minutes = date.getMinutes().toString().padStart(2, '0');
+				  const day = date.getDate().toString().padStart(2, '0');
+				  const month = date.toLocaleString('en-US', { month: 'short' });
+
+				  td.textContent = `${hours}:${minutes}`;
+				});
+
+		    const prices_api = {};
+		    avg = '...'
+		    function updateAverage() {
+		      const values = Object.values(prices_api).filter(v => v !== null && !isNaN(v));
+		      if (values.length > 0) {
+		        avg = values.reduce((a, b) => a + b, 0) / values.length;
+		        document.getElementById("average").textContent = `$${avg.toFixed(2)}`;
+		        document.getElementsByTagName("title")[0].textContent = `$${avg.toFixed(2)}` + '- Btcusd.space';
+		      }
+		    }
+
+		    const wsBitstamp = new WebSocket('wss://ws.bitstamp.net');
+		    wsBitstamp.onopen = () => {
+		      wsBitstamp.send(JSON.stringify({
+		        event: "bts:subscribe",
+		        data: { channel: "live_trades_btcusd" }
+		      }));
+		    };
+		    wsBitstamp.onmessage = event => {
+		      const data = JSON.parse(event.data);
+		      if (data.event === "trade") {
+		        const price = parseFloat(data.data.price);
+		        prices_api.bitstamp = price;
+		        document.getElementById("bitstamp").textContent = `$${price}`;
+		        updateAverage();
+		      }
+		    };
+
+
+		    const wsBinance = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@trade');
+		    wsBinance.onmessage = event => {
+		      const data = JSON.parse(event.data);
+		      const price = parseFloat(data.p);
+		      prices_api.binance = price;
+		      document.getElementById("binance").textContent = `$${price}`;
+		      updateAverage();
+		    };
+
+		    const wsCoinbase = new WebSocket('wss://ws-feed.exchange.coinbase.com');
+		    wsCoinbase.onopen = () => {
+		      wsCoinbase.send(JSON.stringify({
+		        type: "subscribe",
+		        product_ids: ["BTC-USDT"],
+		        channels: ["ticker"]
+		      }));
+		    };
+		    wsCoinbase.onmessage = event => {
+		      const data = JSON.parse(event.data);
+		      if (data.type === "ticker" && data.price) {
+		        const price = parseFloat(data.price);
+		        prices_api.coinbase = price;
+		        document.getElementById("coinbase").textContent = `$${price}`;
+		        updateAverage();
+		      }
+		    };
+
+		    const wsBitfinex = new WebSocket('wss://api-pub.bitfinex.com/ws/2');
+		    let bitfinexChanId = null;
+		    wsBitfinex.onopen = () => {
+		      wsBitfinex.send(JSON.stringify({
+		        event: "subscribe",
+		        channel: "ticker",
+		        symbol: "tBTCUST"
+		      }));
+		    };
+		    wsBitfinex.onmessage = event => {
+		      const data = JSON.parse(event.data);
+		      if (data.event === "subscribed") {
+		        bitfinexChanId = data.chanId;
+		      } else if (Array.isArray(data) && data[0] === bitfinexChanId && Array.isArray(data[1])) {
+		        const price = parseFloat(data[1][6]);  // Last price
+		        prices_api.bitfinex = price;
+		        document.getElementById("bitfinex").textContent = `$${price}`;
+		        updateAverage();
+		      }
+		    };
+
+		    const wsKraken = new WebSocket('wss://ws.kraken.com');
+		    wsKraken.onopen = () => {
+		      wsKraken.send(JSON.stringify({
+		        event: "subscribe",
+		        pair: ["XBT/USDT"],
+		        subscription: { name: "ticker" }
+		      }));
+		    };
+		    wsKraken.onmessage = event => {
+		      const data = JSON.parse(event.data);
+		      if (Array.isArray(data) && data[1]?.c?.[0]) {
+		        const price = parseFloat(data[1].c[0]);
+		        prices_api.kraken = price;
+		        document.getElementById("kraken").textContent = `$${price}`;
+		        updateAverage();
+		      }
+		    };
+
+ 	</script>
+</body>
+</html>

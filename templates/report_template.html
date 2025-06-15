@@ -1,0 +1,318 @@
+<!-- templates/report_template.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ title }}</title>
+    <style>
+      body {  font-family: Arial, 
+        sans-serif; 
+        margin-top: 50px; 
+        background: black;
+        color: lime;
+        font-family: monospace;
+        padding: 20px;
+      }
+      #price { 
+        font-size: 48px; 
+        font-weight: bold; 
+        color: #1abc9c; 
+      }
+      #prices {
+        color: white;
+        right: 150px;
+        position: absolute;
+      }
+      #prices p:not(:first-child) {
+        color: grey;
+      }
+      h1 {
+        font-size: 3em;
+        font-weight: bold;
+      }
+      pre {
+        line-height: 1.1;
+        white-space: pre;
+      }
+    </style>
+</head>
+<body>
+    <h2>{{ title }}</h2>
+    {% if with_chart %}
+        <div id="prices">
+          <h1><span id="average">...</span></h1>
+          <p>BITSTAMP: <span id="bitstamp">...</span></p>
+          <p>BINANCE: <span id="binance">...</span></p>
+          <p>COINBASE: <span id="coinbase">...</span></p>
+          <p>BITFINEX: <span id="bitfinex">...</span></p>
+          <p>KRAKEN: <span id="kraken">...</span></p>
+        </div>
+        <pre id="chart"></pre>
+        <script>
+            const timestamps = {{ data | map(attribute='timestamp') | list | tojson }};
+            const prices = {{ data | map(attribute='price') | list | tojson }};
+
+            const height = 20;
+            const width = prices.length;
+
+            const max = Math.max(...prices);
+            const min = Math.min(...prices);
+            const scale = (price) => Math.round((price - min) / (max - min) * (height - 1));
+
+            let grid = Array.from({ length: height }, () => Array(width).fill('   ')); 
+
+            prices.forEach((price, i) => {
+              const top = height - 1 - scale(price);
+              for (let row = height - 1; row >= top; row--) {
+                grid[row][i] = ' * '; 
+              }
+            });
+
+            const yLabels = grid.map((row, i) => {
+              const value = (max - ((max - min) / (height - 1)) * i).toFixed(2);
+              const labelWidth = 10; 
+              return value.toString().padStart(labelWidth, ' ') + ' | ' + row.join('');
+
+            });
+
+            let xAxis = '             '; 
+            for (let i = 0; i < timestamps.length; i++) {
+              const day = timestamps[i].slice(-2);
+              xAxis += day.padStart(2, ' ') + ' '; 
+            }
+
+            document.getElementById('chart').textContent = yLabels.join('\n') + '\n' + xAxis;
+
+        </script>
+    {% endif %}
+    <br><br>
+    <table>
+        <thead>
+            <tr>
+                <th style="text-align: left;">Date</th>
+                <th style="text-align: left;">Price</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data %}
+            <tr>
+                <td style="width: 100px;">{{ row.timestamp }}</td>
+                <td>{{ row.price }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if with_chart %}
+    <script>
+      async function checkFileExists(url) {
+        try {
+          const response = await fetch(url, { method: 'HEAD' });
+          return response.ok;
+        } catch {
+          return false;
+        }
+      }
+
+      (async () => {
+        const match = window.location.pathname.match(/report_(\d{4})-(\d{2})\.html/);
+        if (!match) return;
+
+        let year = parseInt(match[1]);
+        let month = parseInt(match[2]);
+
+        const current = new Date(year, month - 1);
+        const prev = new Date(current);
+        const next = new Date(current);
+        prev.setMonth(current.getMonth() - 1);
+        next.setMonth(current.getMonth() + 1);
+
+        const format = (date) => {
+          const y = date.getFullYear();
+          const m = String(date.getMonth() + 1).padStart(2, '0');
+          return `${y}-${m}`;
+        };
+
+        const prevURL = `/monthly_reports/report_${format(prev)}.html`;
+        const nextURL = `/monthly_reports/report_${format(next)}.html`;
+
+        const [prevExists, nextExists] = await Promise.all([
+          checkFileExists(prevURL),
+          checkFileExists(nextURL)
+        ]);
+
+        const navDiv = document.createElement('div');
+        navDiv.style.textAlign = 'center';
+        navDiv.style.marginTop = '2em';
+        navDiv.style.fontSize = '1.2em';
+
+        navDiv.innerHTML = `
+          ${prevExists ? `<a href="${prevURL}">&larr; Previous Month</a>` : ''}
+          ${prevExists && nextExists ? ' | ' : ''}
+          ${nextExists ? `<a href="${nextURL}">Next Month &rarr;</a>` : ''}
+        `;
+
+        document.body.appendChild(navDiv);
+
+        const prices_api = {};
+
+        function updateAverage() {
+          const values = Object.values(prices_api).filter(v => v !== null && !isNaN(v));
+          if (values.length > 0) {
+            const avg = values.reduce((a, b) => a + b, 0) / values.length;
+            document.getElementById("average").textContent = `$${avg.toFixed(2)}`;
+          }
+        }
+
+        const wsBitstamp = new WebSocket('wss://ws.bitstamp.net');
+        wsBitstamp.onopen = () => {
+          wsBitstamp.send(JSON.stringify({
+            event: "bts:subscribe",
+            data: { channel: "live_trades_btcusd" }
+          }));
+        };
+        wsBitstamp.onmessage = event => {
+          const data = JSON.parse(event.data);
+          if (data.event === "trade") {
+            const price = parseFloat(data.data.price);
+            prices_api.bitstamp = price;
+            document.getElementById("bitstamp").textContent = `$${price}`;
+            updateAverage();
+          }
+        };
+
+
+        const wsBinance = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@trade');
+        wsBinance.onmessage = event => {
+          const data = JSON.parse(event.data);
+          const price = parseFloat(data.p);
+          prices_api.binance = price;
+          document.getElementById("binance").textContent = `$${price}`;
+          updateAverage();
+        };
+
+        const wsCoinbase = new WebSocket('wss://ws-feed.exchange.coinbase.com');
+        wsCoinbase.onopen = () => {
+          wsCoinbase.send(JSON.stringify({
+            type: "subscribe",
+            product_ids: ["BTC-USDT"],
+            channels: ["ticker"]
+          }));
+        };
+        wsCoinbase.onmessage = event => {
+          const data = JSON.parse(event.data);
+          if (data.type === "ticker" && data.price) {
+            const price = parseFloat(data.price);
+            prices_api.coinbase = price;
+            document.getElementById("coinbase").textContent = `$${price}`;
+            updateAverage();
+          }
+        };
+
+        const wsBitfinex = new WebSocket('wss://api-pub.bitfinex.com/ws/2');
+        let bitfinexChanId = null;
+        wsBitfinex.onopen = () => {
+          wsBitfinex.send(JSON.stringify({
+            event: "subscribe",
+            channel: "ticker",
+            symbol: "tBTCUST"
+          }));
+        };
+        wsBitfinex.onmessage = event => {
+          const data = JSON.parse(event.data);
+          if (data.event === "subscribed") {
+            bitfinexChanId = data.chanId;
+          } else if (Array.isArray(data) && data[0] === bitfinexChanId && Array.isArray(data[1])) {
+            const price = parseFloat(data[1][6]);  // Last price
+            prices_api.bitfinex = price;
+            document.getElementById("bitfinex").textContent = `$${price}`;
+            updateAverage();
+          }
+        };
+
+        const wsKraken = new WebSocket('wss://ws.kraken.com');
+        wsKraken.onopen = () => {
+          wsKraken.send(JSON.stringify({
+            event: "subscribe",
+            pair: ["XBT/USDT"],
+            subscription: { name: "ticker" }
+          }));
+        };
+        wsKraken.onmessage = event => {
+          const data = JSON.parse(event.data);
+          if (Array.isArray(data) && data[1]?.c?.[0]) {
+            const price = parseFloat(data[1].c[0]);
+            prices_api.kraken = price;
+            document.getElementById("kraken").textContent = `$${price}`;
+            updateAverage();
+          }
+        };
+
+      })();
+    </script>
+    {% else %}
+    <script>
+      // Function to format Date object as 'YYYY-MM-DD'
+      function formatDate(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+
+      // Function to check if a file exists using HEAD request
+      async function checkFileExists(url) {
+        try {
+          const response = await fetch(url, { method: 'HEAD' });
+          return response.ok;
+        } catch {
+          return false;
+        }
+      }
+
+      (async () => {
+        // Extract the date from the current URL
+        const match = window.location.pathname.match(/report_(\d{4})-(\d{2})-(\d{2})\.html/);
+        if (!match) return;
+
+        const [ , year, month, day ] = match;
+        const currentDate = new Date(`${year}-${month}-${day}`);
+
+        // Calculate previous and next dates
+        const prevDate = new Date(currentDate);
+        prevDate.setDate(currentDate.getDate() - 1);
+        const nextDate = new Date(currentDate);
+        nextDate.setDate(currentDate.getDate() + 1);
+
+        // Format dates for URLs
+        const prevStr = formatDate(prevDate);
+        const nextStr = formatDate(nextDate);
+
+        const prevURL = `/daily_reports/report_${prevStr}.html`;
+        const nextURL = `/daily_reports/report_${nextStr}.html`;
+
+        // Check if the previous and next report files exist
+        const [prevExists, nextExists] = await Promise.all([
+          checkFileExists(prevURL),
+          checkFileExists(nextURL)
+        ]);
+
+        // Create navigation links
+        const navDiv = document.createElement('div');
+        navDiv.style.textAlign = 'center';
+        navDiv.style.marginTop = '2em';
+        navDiv.style.fontSize = '1.2em';
+
+        navDiv.innerHTML = `
+          ${prevExists ? `<a href="${prevURL}">&larr; Previous Day</a>` : ''}
+          ${prevExists && nextExists ? ' | ' : ''}
+          ${nextExists ? `<a href="${nextURL}">Next Day &rarr;</a>` : ''}
+        `;
+
+        // Append navigation links to the page
+        document.body.appendChild(navDiv);
+
+
+      })();
+    </script>
+    {% endif %}
+</body>
+</html>

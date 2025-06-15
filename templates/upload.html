@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>upload csv</title>
+</head>
+<body>
+    <h2>upload .csv file</h2>
+
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+
+    <form action="/upload_csv" enctype="multipart/form-data" method="post">
+        <input type="file" name="file" accept=".csv" required>
+        <input type="submit" value="Upload">
+    </form>
+</body>
+</html>
